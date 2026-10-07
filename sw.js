@@ -1,4 +1,4 @@
-const CACHE = 'recite843-v4';
+const CACHE = 'recite843-v5';
 const ASSETS = [
   './',
   './index.html',
