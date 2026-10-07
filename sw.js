@@ -1,9 +1,10 @@
-const CACHE = 'recite843-v5';
+const CACHE = 'recite843-v6';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
   './assets/app.css',
   './assets/app.js',
   './assets/scheduler.js',
