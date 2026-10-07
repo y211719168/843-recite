@@ -46,6 +46,58 @@ window.addEventListener('error', e =>
 window.addEventListener('unhandledrejection', e =>
   fatal((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
 
+/* ================= 外观（白天 / 黑夜 / 跟随系统） ================= */
+
+const THEME_KEY = 'theme843';
+
+function currentTheme() {
+  try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { return 'auto'; }
+}
+
+function applyTheme(mode) {
+  document.documentElement.dataset.theme = mode;
+  const dark = mode === 'dark'
+    || (mode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#14171a' : '#1f6feb');
+  document.querySelectorAll('#themeSeg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.themeopt === mode));
+}
+
+function setTheme(mode) {
+  try { localStorage.setItem(THEME_KEY, mode); } catch (e) { /* 忽略 */ }
+  applyTheme(mode);
+}
+
+/* ================= 默写作答比对 ================= */
+
+const escapeHtml = s => String(s).replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/** 去掉空白与标点，便于比对 */
+const stripPunct = s => (s || '').replace(/[\s\p{P}]/gu, '').toLowerCase();
+
+/**
+ * 默写作答与标准释义的重合度（参考值，非判分）。
+ * 用二元词组的覆盖率衡量：标准释义里的相邻两字组合，有多少也出现在你的作答里。
+ */
+function recallScore(user, answer) {
+  const A = stripPunct(answer);
+  const U = stripPunct(user);
+  if (!A || !U) return 0;
+  const gram = s => {
+    const set = new Set();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    return set;
+  };
+  const ga = gram(A);
+  if (!ga.size) return A === U ? 100 : 0;
+  const gu = gram(U);
+  let hit = 0;
+  for (const g of ga) if (gu.has(g)) hit += 1;
+  return Math.round(hit / ga.size * 100);
+}
+
 /* ================= 全局状态 ================= */
 
 const TODAY = todayIndex();
@@ -210,6 +262,7 @@ async function renderStats() {
 /* ================= 渲染：设置 ================= */
 
 async function renderSettings() {
+  applyTheme(currentTheme());
   $('examDate').value = setting('examDate', S.data.examDate);
   $('defNew').value = setting('defaultNew', '');
   $('defNew').placeholder = '自动';
@@ -307,6 +360,11 @@ function showCard() {
   $('browseBar').hidden = !S.browse;
   $('btnBonus').hidden = S.browse;
 
+  // 默写区：每次换卡清空；速览模式下不显示
+  $('recallInput').value = '';
+  $('recallBox').hidden = S.browse;
+  $('fcResult').hidden = true;
+
   // 评分按钮上的间隔预览
   const iv = previewIntervals(card, st);
   $('ivAgain').textContent = '今天';
@@ -320,12 +378,28 @@ function showCard() {
 }
 
 function flip() {
-  if (!current()) return;
-  S.flipped = !S.flipped;
-  $('fc').querySelector('.fc-front').classList.toggle('on', !S.flipped);
-  $('fc').querySelector('.fc-back').classList.toggle('on', S.flipped);
-  $('rate').hidden = S.browse || !S.flipped;
-  $('rateHint').hidden = S.browse || S.flipped;
+  const item = current();
+  if (!item || S.flipped) return;
+  S.flipped = true;
+
+  $('fc').querySelector('.fc-front').classList.remove('on');
+  $('fc').querySelector('.fc-back').classList.add('on');
+  $('rate').hidden = S.browse;
+  $('rateHint').hidden = true;
+  $('browseBar').hidden = !S.browse;
+
+  // 有默写作答就给出参考重合度，供自己判断掌握程度
+  const typed = $('recallInput').value.trim();
+  const box = $('fcResult');
+  if (typed) {
+    const pct = recallScore(typed, item.card.definition);
+    box.innerHTML =
+      `本张记忆重合度 <b>${pct}%</b><br>仅供参考，最终对错由自己判断` +
+      `<div class="answer">你的作答：${escapeHtml(typed)}</div>`;
+    box.hidden = false;
+  } else {
+    box.hidden = true;
+  }
 }
 
 async function rate(r) {
@@ -463,9 +537,19 @@ function bind() {
     showCard();
   });
 
-  $('fcWrap').addEventListener('click', flip);
+  $('fcWrap').addEventListener('click', e => {
+    if (e.target.closest('#recallBox')) return;   // 点输入框或按钮时不翻面
+    flip();
+  });
+  $('btnCheck').addEventListener('click', e => { e.stopPropagation(); flip(); });
   document.querySelectorAll('#rate button').forEach(b =>
     b.addEventListener('click', e => { e.stopPropagation(); rate(b.dataset.r); }));
+
+  document.querySelectorAll('#themeSeg button').forEach(b =>
+    b.addEventListener('click', () => setTheme(b.dataset.themeopt)));
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (currentTheme() === 'auto') applyTheme('auto');
+  });
 
   document.querySelectorAll('.stepper button').forEach(b =>
     b.addEventListener('click', () => changeQuota(b.dataset.q, +b.dataset.d)));
@@ -497,6 +581,12 @@ function bind() {
   // 键盘：空格翻面，1-4 评分
   document.addEventListener('keydown', e => {
     if ($('study').hidden) return;
+    const typing = e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT');
+    if (typing) {
+      // 正在默写：回车 = 对照答案，其余按键交给输入框
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); flip(); }
+      return;
+    }
     if (e.code === 'Space' || e.key === 'Enter') { e.preventDefault(); flip(); return; }
     const map = { '1': 'again', '2': 'hard', '3': 'good', '4': 'easy' };
     if (map[e.key]) rate(map[e.key]);

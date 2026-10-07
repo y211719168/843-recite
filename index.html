@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1f6feb">
+<script>
+/* 在样式表之前应用主题，避免打开瞬间闪一下 */
+try { document.documentElement.dataset.theme = localStorage.getItem('theme843') || 'auto'; } catch (e) {}
+</script>
 <title>843 背诵</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="assets/app.css">
@@ -98,6 +102,14 @@
 <!-- ============ 设置 ============ -->
 <main class="view" id="view-settings" hidden>
   <section class="card">
+    <h2>外观</h2>
+    <div class="seg" id="themeSeg">
+      <button data-themeopt="auto">跟随系统</button>
+      <button data-themeopt="light">白天</button>
+      <button data-themeopt="dark">黑夜</button>
+    </div>
+  </section>
+  <section class="card">
     <h2>考试日期</h2>
     <input type="date" id="examDate">
   </section>
@@ -137,11 +149,17 @@
       <div class="fc-face fc-front">
         <div class="fc-tags" id="fcTags"></div>
         <div class="fc-term" id="fcTerm"></div>
-        <div class="fc-hint">点击查看释义 · 空格翻面</div>
+        <div class="fc-recall" id="recallBox">
+          <textarea class="fc-input" id="recallInput" rows="2"
+            placeholder="凭记忆写出释义（可留空，直接看答案）"></textarea>
+          <button class="primary-sm" id="btnCheck">对照答案</button>
+        </div>
+        <div class="fc-hint">直接点卡片看答案 · 空格翻面</div>
       </div>
       <div class="fc-face fc-back">
         <div class="fc-term small" id="fcTermBack"></div>
         <div class="fc-def" id="fcDef"></div>
+        <div class="fc-result" id="fcResult" hidden></div>
       </div>
     </div>
   </div>
