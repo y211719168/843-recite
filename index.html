@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<title>843 背诵</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<!-- ============ 顶部状态 ============ -->
+<header class="topbar">
+  <div class="topbar-main">
+    <span class="brand">843 背诵</span>
+    <span class="countdown" id="countdown">—</span>
+  </div>
+  <div class="progress-track"><div class="progress-fill" id="todayBar"></div></div>
+</header>
+
+<!-- ============ 今日 ============ -->
+<main class="view" id="view-today">
+  <section class="card hero">
+    <div class="hero-num"><b id="doneToday">0</b><span>/ <i id="goalToday">0</i> 张</span></div>
+    <div class="hero-sub" id="heroSub">今日已学</div>
+  </section>
+
+  <section class="card">
+    <div class="row-between">
+      <h2>今日学习量</h2>
+      <button class="link" id="btnResetQuota" hidden>恢复自动</button>
+    </div>
+    <div class="quota">
+      <div class="quota-row">
+        <label>新卡</label>
+        <div class="stepper">
+          <button data-q="new" data-d="-1">−</button>
+          <span id="qNew">0</span>
+          <button data-q="new" data-d="1">＋</button>
+        </div>
+      </div>
+      <div class="quota-row">
+        <label>总上限</label>
+        <div class="stepper">
+          <button data-q="cap" data-d="-1">−</button>
+          <span id="qCap">0</span>
+          <button data-q="cap" data-d="1">＋</button>
+        </div>
+      </div>
+    </div>
+    <div class="presets" id="presets">
+      <button data-preset="6">轻松 6</button>
+      <button data-preset="11">标准 11</button>
+      <button data-preset="20">加量 20</button>
+      <button data-preset="30">冲刺 30</button>
+    </div>
+  </section>
+
+  <section class="stats3">
+    <div class="stat"><b id="cNew">0</b><span>新卡</span></div>
+    <div class="stat"><b id="cDue">0</b><span>待复习</span></div>
+    <div class="stat"><b id="cDone">0</b><span>今日完成</span></div>
+  </section>
+
+  <button class="primary" id="btnStart">开始学习</button>
+  <button class="link-more" id="btnBrowse" hidden></button>
+</main>
+
+<!-- ============ 统计 ============ -->
+<main class="view" id="view-stats" hidden>
+  <section class="card">
+    <h2>总进度</h2>
+    <div class="progress-track big"><div class="progress-fill" id="allBar"></div></div>
+    <p class="muted" id="allText">—</p>
+  </section>
+
+  <section class="card">
+    <h2>今日</h2>
+    <div class="stats3">
+      <div class="stat"><b id="sNew">0</b><span>新卡</span></div>
+      <div class="stat"><b id="sRev">0</b><span>复习</span></div>
+      <div class="stat"><b id="sRate">—</b><span>答对率</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>各科目</h2>
+    <div id="bySubject"></div>
+  </section>
+
+  <section class="card">
+    <h2>未来 7 天到期</h2>
+    <div class="bars" id="forecast"></div>
+  </section>
+</main>
+
+<!-- ============ 设置 ============ -->
+<main class="view" id="view-settings" hidden>
+  <section class="card">
+    <h2>考试日期</h2>
+    <input type="date" id="examDate">
+  </section>
+  <section class="card">
+    <h2>默认每日新卡</h2>
+    <input type="number" id="defNew" min="1" max="100">
+    <h2 style="margin-top:14px">默认单日上限</h2>
+    <input type="number" id="defCap" min="10" max="400">
+  </section>
+  <section class="card">
+    <h2>数据</h2>
+    <button class="ghost" id="btnExport">导出备份</button>
+    <button class="ghost" id="btnImport">导入备份</button>
+    <button class="ghost danger" id="btnReset">清空全部进度</button>
+    <input type="file" id="fileImport" accept=".json" hidden>
+    <p class="muted" id="backupHint">—</p>
+  </section>
+  <section class="card">
+    <h2>关于</h2>
+    <p class="muted" id="aboutText">—</p>
+    <div class="notice">
+      <p>使用该项目以及相关文件时，请先联系 QQ <b>2086519059</b>。</p>
+      <p>部分资料来源于 IMDT 交流群：<b>867855924</b>，在此特意感谢。</p>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 学习（全屏） ============ -->
+<div class="study" id="study" hidden>
+  <div class="study-top">
+    <button class="icon" id="btnQuit">✕</button>
+    <span id="studyProgress">0 / 0</span>
+    <button class="icon" id="btnBonus" title="再来 5 张">＋5</button>
+  </div>
+  <div class="fc-wrap" id="fcWrap">
+    <div class="fc" id="fc">
+      <div class="fc-face fc-front">
+        <div class="fc-tags" id="fcTags"></div>
+        <div class="fc-term" id="fcTerm"></div>
+        <div class="fc-hint">点击查看释义 · 空格翻面</div>
+      </div>
+      <div class="fc-face fc-back">
+        <div class="fc-term small" id="fcTermBack"></div>
+        <div class="fc-def" id="fcDef"></div>
+      </div>
+    </div>
+  </div>
+  <div class="rate" id="rate" hidden>
+    <button data-r="again"><b>重来</b><span id="ivAgain">—</span></button>
+    <button data-r="hard"><b>困难</b><span id="ivHard">—</span></button>
+    <button data-r="good"><b>一般</b><span id="ivGood">—</span></button>
+    <button data-r="easy"><b>简单</b><span id="ivEasy">—</span></button>
+  </div>
+  <div class="rate-placeholder" id="rateHint">先想想，再翻面</div>
+  <div class="browse-bar" id="browseBar" hidden>
+    <button id="btnPrev">上一张</button>
+    <button id="btnNext" class="primary-sm">下一张</button>
+  </div>
+</div>
+
+<!-- ============ 底部导航 ============ -->
+<nav class="tabs" id="tabs">
+  <button data-tab="today" class="active">今日</button>
+  <button data-tab="stats">统计</button>
+  <button data-tab="settings">设置</button>
+</nav>
+
+<!-- ============ 环境警告 ============ -->
+<div class="overlay" id="envWarn" hidden>
+  <div class="dialog">
+    <h2>需要通过 HTTP 打开</h2>
+    <p>当前是 <code>file://</code> 方式打开，浏览器会禁用本地存储，学习进度无法保存。</p>
+    <p>请在 <code>D:\843背诵\11_背诵应用</code> 目录下执行：</p>
+    <pre>python -m http.server 8000</pre>
+    <p>然后访问 <code>http://localhost:8000</code></p>
+  </div>
+</div>
+
+<div class="overlay" id="errBox" hidden>
+  <div class="dialog">
+    <h2>运行出错</h2>
+    <pre id="errMsg"></pre>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* 启动自检：脚本若未能加载，给出可见提示，避免"空白页"式故障 */
+window.__booted = false;
+window.__errs = [];
+window.addEventListener('error', function (e) {
+  window.__errs.push((e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
+}, true);
+window.addEventListener('unhandledrejection', function (e) {
+  window.__errs.push('Promise: ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+});
+setTimeout(function () {
+  if (window.__booted || window.__errs.length === 0) return;
+  var d = document.createElement('div');
+  d.className = 'overlay';
+  d.innerHTML = '<div class="dialog"><h2>脚本未启动</h2><pre>' +
+    window.__errs.join('\n\n') + '</pre></div>';
+  document.body.appendChild(d);
+}, 3000);
+</script>
+<script type="module" src="assets/app.js"></script>
+</body>
+</html>
