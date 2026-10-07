@@ -68,7 +68,15 @@ try { document.documentElement.dataset.theme = localStorage.getItem('theme843') 
   </section>
 
   <button class="primary" id="btnStart">开始学习</button>
-  <button class="link-more" id="btnBrowse" hidden></button>
+
+  <section class="card">
+    <h2>专题练习</h2>
+    <button class="row-btn" id="btnBrowse"></button>
+    <button class="row-btn" id="btnDebates">辨析题</button>
+    <button class="row-btn" id="btnBundles">真题整题模拟</button>
+  </section>
+
+  <p class="backup-warn" id="backupWarn" hidden></p>
 </main>
 
 <!-- ============ 统计 ============ -->
@@ -96,6 +104,11 @@ try { document.documentElement.dataset.theme = localStorage.getItem('theme843') 
   <section class="card">
     <h2>未来 7 天到期</h2>
     <div class="bars" id="forecast"></div>
+  </section>
+
+  <section class="card">
+    <h2>易错卡（忘过 2 次以上）</h2>
+    <div id="weakList"></div>
   </section>
 </main>
 
@@ -142,7 +155,10 @@ try { document.documentElement.dataset.theme = localStorage.getItem('theme843') 
   <div class="study-top">
     <button class="icon" id="btnQuit">✕</button>
     <span id="studyProgress">0 / 0</span>
-    <button class="icon" id="btnBonus" title="再来 5 张">＋5</button>
+    <span class="study-top-right">
+      <button class="icon" id="btnMark" title="标记为已练" hidden>✓</button>
+      <button class="icon" id="btnBonus" title="再来 5 张">＋5</button>
+    </span>
   </div>
   <div class="fc-wrap" id="fcWrap">
     <div class="fc" id="fc">
@@ -202,6 +218,16 @@ try { document.documentElement.dataset.theme = localStorage.getItem('theme843') 
 </div>
 
 <div class="toast" id="toast" hidden></div>
+
+<!-- ============ 列表页（真题整题模拟选题） ============ -->
+<div class="sheet" id="listView" hidden>
+  <div class="sheet-top">
+    <button class="icon" id="listClose">✕</button>
+    <span id="listTitle">—</span>
+    <span class="sheet-spacer"></span>
+  </div>
+  <div class="sheet-body" id="listBody"></div>
+</div>
 
 <script>
 /* 启动自检：脚本若未能加载，给出可见提示，避免"空白页"式故障 */

@@ -109,10 +109,14 @@ const S = {
   queue: [],
   idx: 0,
   flipped: false,
-  browse: false,       // C 级速览模式
+  mode: 'srs',         // 'srs' 正常复习 | 'browse' C 级速览 | 'debate' 辨析题
+  label: null,         // 整题模拟时显示"这是哪年哪题"
   session: { rated: 0, correct: 0, isNew: 0 },
   finished: false,
 };
+
+/** 只看不评分的模式（速览、辨析题） */
+const noRate = () => S.mode !== 'srs';
 
 const DEFAULTS = {
   bufferDays: 14,
@@ -207,11 +211,35 @@ function renderToday() {
   $('btnStart').textContent = empty ? '今天没有待办，休息一下' : `开始学习（${built.queue.length} 张）`;
   $('btnStart').disabled = empty;
 
-  // C 级速览入口
+  // 专题入口
   const cCount = S.data.cards.filter(c => !c.inSrs).length;
   const browseBtn = $('btnBrowse');
   browseBtn.hidden = cCount === 0;
-  browseBtn.textContent = `C 级速览 · ${cCount} 条（考前浏览，不计入复习）`;
+  browseBtn.textContent = `C 级速览 · ${cCount} 条`;
+
+  const dTotal = (S.data.debates || []).length;
+  const dDone = setting('debateDone', []).length;
+  const dBtn = $('btnDebates');
+  dBtn.hidden = dTotal === 0;
+  dBtn.textContent = `辨析题 · 已练 ${dDone}/${dTotal}`;
+
+  const bTotal = bundleGroups().length;
+  const bBtn = $('btnBundles');
+  bBtn.hidden = bTotal === 0;
+  bBtn.textContent = `真题整题模拟 · ${bTotal} 组`;
+
+  // 备份提醒：进度只在本机，超过 7 天没备份就提示
+  const warn = $('backupWarn');
+  const lastBak = setting('lastBackupAt', null);
+  const bakDays = lastBak ? Math.floor((Date.now() - lastBak) / 86400000) : null;
+  if (bakDays === null || bakDays >= 7) {
+    warn.hidden = false;
+    warn.textContent = bakDays === null
+      ? '⚠ 还没备份过 · 点这里导出（进度只存在本机）'
+      : `⚠ 已 ${bakDays} 天没备份 · 点这里导出（进度只存在本机）`;
+  } else {
+    warn.hidden = true;
+  }
 
   return built;
 }
@@ -257,6 +285,18 @@ async function renderStats() {
       <i style="height:${(n / max * 100).toFixed(1)}%"></i>
       <em>${fmtDate(TODAY + i)}</em>
     </div>`).join('');
+
+  // 易错卡：忘过 2 次以上
+  const weak = S.data.cards
+    .map(c => ({ c, st: S.progress[c.id] }))
+    .filter(x => x.st && x.st.lapses >= 2)
+    .sort((a, b) => b.st.lapses - a.st.lapses)
+    .slice(0, 20);
+  $('weakList').innerHTML = weak.length
+    ? weak.map(x =>
+        `<div class="weak-item"><span>${escapeHtml(x.c.term)}</span><em>忘 ${x.st.lapses} 次</em></div>`
+      ).join('')
+    : '<p class="muted">暂时没有。忘过 2 次以上的卡片会出现在这里。</p>';
 }
 
 /* ================= 渲染：设置 ================= */
@@ -293,7 +333,8 @@ function startStudy(bonus = 0) {
     if (!built.queue.length) { toast('今天没有待办'); return; }
     S.queue = built.queue;
     S.idx = 0;
-    S.browse = false;
+      S.mode = 'srs';
+      S.label = null;
     S.session = { rated: 0, correct: 0, isNew: 0 };
     S.finished = false;
     if (!S.meta['goal_' + TODAY]) {
@@ -314,17 +355,116 @@ function startBrowse() {
   if (!list.length) { toast('没有 C 级词条'); return; }
   S.queue = list.map(c => ({ card: c, st: null }));
   S.idx = 0;
-  S.browse = true;
+    S.mode = 'browse';
+    S.label = null;
   S.session = { rated: 0, correct: 0, isNew: 0 };
   $('study').hidden = false;
   document.body.style.overflow = 'hidden';
   showCard();
 }
 
+  /** 辨析题：41 道，练的是答题骨架，不计入 SRS */
+  function startDebates() {
+    const list = S.data.debates || [];
+    if (!list.length) { toast('没有辨析题'); return; }
+    S.queue = list.map((d, i) => ({
+      card: {
+        id: 'DEBATE-' + i,
+        term: d.question,
+        definition: d.answer ||
+          '这道题来自真题回忆，没有现成作答。用下面这个骨架自己组织一遍：\n\n' +
+          '① 定性：该观点不正确 / 片面 / 不完全成立\n' +
+          '② 三点论述：每点一句「概念界定 + 为什么」\n' +
+          '③ 举例佐证：一个具体的产品 / 游戏 / 设计实践\n' +
+          '④ 收束：指出正确的说法应该是什么',
+        subject: '创新设计',
+        group: '辨析题',
+        priority: 'A',
+        difficulty: 2,
+        examYears: d.examYears || [],
+        bundles: [],
+        inSrs: false,
+      },
+      st: null,
+    }));
+    S.idx = 0;
+    S.mode = 'debate';
+    S.label = null;
+    S.session = { rated: 0, correct: 0, isNew: 0 };
+    $('study').hidden = false;
+    document.body.style.overflow = 'hidden';
+    showCard();
+  }
+
+  /** 真题整题模拟：按 bundles 分组 */
+  function bundleGroups() {
+    const map = new Map();
+    for (const c of S.data.cards) {
+      for (const b of (c.bundles || [])) {
+        if (!map.has(b)) map.set(b, []);
+        map.get(b).push(c);
+      }
+    }
+    const order = ['2021', '2022', '2023', '2024', '2025', '2026', '模拟卷'];
+    return [...map.entries()].sort((x, y) => {
+      const ax = order.indexOf(x[0].split('-')[0]);
+      const ay = order.indexOf(y[0].split('-')[0]);
+      return (ax - ay) || x[0].localeCompare(y[0], 'zh');
+    });
+  }
+
+  const prettyBundle = id => {
+    const [y, q] = id.split('-');
+    return `${y} · ${(q || '').replace('名解', '名词解释 ')}`;
+  };
+
+  function openBundlePicker() {
+    const groups = bundleGroups();
+    if (!groups.length) { toast('没有可用的真题分组'); return; }
+    $('listTitle').textContent = '选择要模拟的真题';
+    $('listBody').innerHTML = groups.map(([id, cards]) => `
+      <button class="sheet-item" data-bundle="${id}">
+        <b>${prettyBundle(id)}</b>
+        <span>${cards.map(c => c.term).join(' · ')}</span>
+      </button>`).join('');
+    $('listView').hidden = false;
+  }
+
+  function startBundle(id) {
+    const items = S.data.cards
+      .filter(c => (c.bundles || []).includes(id))
+      .map(c => ({ card: c, st: S.progress[c.id] || null }));
+    if (!items.length) { toast('这组没有卡片'); return; }
+    $('listView').hidden = true;
+    S.queue = items;
+    S.idx = 0;
+    S.mode = 'srs';
+    S.label = prettyBundle(id);
+    S.session = { rated: 0, correct: 0, isNew: 0 };
+    S.finished = false;
+    $('study').hidden = false;
+    document.body.style.overflow = 'hidden';
+    showCard();
+  }
+
+  /** 辨析题"已练"标记 */
+  async function markDebate() {
+    const item = current();
+    if (!item || S.mode !== 'debate') return;
+    const i = +item.card.id.split('-')[1];
+    const set = new Set(setting('debateDone', []));
+    const on = !set.has(i);
+    if (on) set.add(i); else set.delete(i);
+    await saveSetting('debateDone', [...set]);
+    $('btnMark').style.color = on ? 'var(--ok)' : 'var(--muted)';
+    toast(on ? '已标记为练过' : '已取消标记', 1200);
+  }
+
 function quitStudy() {
   $('study').hidden = true;
   document.body.style.overflow = '';
-  S.browse = false;
+    S.mode = 'srs';
+    S.label = null;
   renderToday();
   renderStats();
 }
@@ -343,11 +483,16 @@ function showCard() {
 
   // 标签
   const tags = [`${card.subject}`, `${card.group}`];
+    const debateDone = S.mode === 'debate' &&
+      setting('debateDone', []).includes(+card.id.split('-')[1]);
   $('fcTags').innerHTML =
     (card.priority === 'S' ? '<span class="s">S 级 · 高频</span>' : '') +
     card.examYears.map(y => `<span class="exam">${y} 考过</span>`).join('') +
     tags.map(t => `<span>${t}</span>`).join('') +
-    (state.reps ? `<span>第 ${state.reps + 1} 次</span>` : '<span>新卡</span>');
+      (S.mode === 'srs'
+        ? (state.reps ? `<span>第 ${state.reps + 1} 次</span>` : '<span>新卡</span>')
+        : '') +
+      (debateDone ? '<span class="exam">已练</span>' : '');
 
   $('fcTerm').textContent = card.term;
   $('fcTermBack').textContent = card.term;
@@ -356,13 +501,15 @@ function showCard() {
   $('fc').querySelector('.fc-front').classList.add('on');
   $('fc').querySelector('.fc-back').classList.remove('on');
   $('rate').hidden = true;
-  $('rateHint').hidden = S.browse;
-  $('browseBar').hidden = !S.browse;
-  $('btnBonus').hidden = S.browse;
+    $('rateHint').hidden = noRate();
+    $('browseBar').hidden = !noRate();
+    $('btnBonus').hidden = noRate();
+    $('btnMark').hidden = S.mode !== 'debate';
+    $('btnMark').style.color = debateDone ? 'var(--ok)' : 'var(--muted)';
 
-  // 默写区：每次换卡清空；速览模式下不显示
+    // 默写区：每次换卡清空；只看不评分的模式不显示
   $('recallInput').value = '';
-  $('recallBox').hidden = S.browse;
+    $('recallBox').hidden = noRate();
   $('fcResult').hidden = true;
 
   // 评分按钮上的间隔预览
@@ -372,9 +519,13 @@ function showCard() {
   $('ivGood').textContent = iv.good + ' 天';
   $('ivEasy').textContent = iv.easy + ' 天';
 
-  $('studyProgress').textContent = S.browse
-    ? `C 级速览 ${S.idx + 1} / ${S.queue.length}`
-    : `${S.session.rated} / ${Math.max(S.queue.length, S.session.rated + 1)}`;
+    $('studyProgress').textContent = S.label
+      ? `${S.label} · ${S.idx + 1}/${S.queue.length}`
+      : S.mode === 'browse'
+        ? `C 级速览 ${S.idx + 1} / ${S.queue.length}`
+        : S.mode === 'debate'
+          ? `辨析题 ${S.idx + 1} / ${S.queue.length}`
+          : `${S.session.rated} / ${Math.max(S.queue.length, S.session.rated + 1)}`;
 }
 
 function flip() {
@@ -384,9 +535,9 @@ function flip() {
 
   $('fc').querySelector('.fc-front').classList.remove('on');
   $('fc').querySelector('.fc-back').classList.add('on');
-  $('rate').hidden = S.browse;
+    $('rate').hidden = noRate();
   $('rateHint').hidden = true;
-  $('browseBar').hidden = !S.browse;
+    $('browseBar').hidden = !noRate();
 
   // 有默写作答就给出参考重合度，供自己判断掌握程度
   const typed = $('recallInput').value.trim();
@@ -417,8 +568,9 @@ async function rate(r) {
   if (r !== 'again') S.session.correct += 1;
   if (isNew) S.session.isNew += 1;
 
-  const done = (S.meta['done_' + TODAY] || 0) + 1;
-  await saveSetting('done_' + TODAY, done);
+    // 先读最新值再加 1：多个标签页同时写时，避免后写的覆盖先写的
+    const freshDone = (await db.getMeta('done_' + TODAY)) || 0;
+    await saveSetting('done_' + TODAY, freshDone + 1);
 
   if (r === 'again') {
     S.queue.push({ card, st: next });      // 当天稍后再出现一次
@@ -514,6 +666,15 @@ function bind() {
 
   $('btnStart').addEventListener('click', () => startStudy());
   $('btnBrowse').addEventListener('click', startBrowse);
+  $('btnDebates').addEventListener('click', startDebates);
+  $('btnBundles').addEventListener('click', openBundlePicker);
+  $('btnMark').addEventListener('click', markDebate);
+  $('backupWarn').addEventListener('click', doExport);
+  $('listClose').addEventListener('click', () => { $('listView').hidden = true; });
+  $('listBody').addEventListener('click', e => {
+    const b = e.target.closest('[data-bundle]');
+    if (b) startBundle(b.dataset.bundle);
+  });
   $('btnNext').addEventListener('click', () => {
     if (S.idx < S.queue.length - 1) { S.idx += 1; showCard(); }
     else { quitStudy(); toast('C 级已全部浏览完'); }
